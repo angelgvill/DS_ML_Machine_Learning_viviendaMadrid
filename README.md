@@ -1,1 +1,1 @@
-Se plantea un ejercicio de aprendizaje automático, Machine Learning, sobre la vivienda en venta en Madrid, precios y sus características. Se descargan datos disponibles de la web Idealista, mediante Web Scrapping dentro de su API..
+Se plantea un ejercicio de aprendizaje automático, Machine Learning, sobre la vivienda en venta en Madrid, precios y sus características. Se descargan datos disponibles de la web Idealista, mediante Web Scrapping dentro de su API.
