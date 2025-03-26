@@ -180,5 +180,145 @@ def categoricas(df):
 
 
 
+#FUNCIONES ESPECÍFICA DEL TRABAJO EN DATASET IDEALISTA
+
+#FUNCIÓN PARA EXPANDIR CELDAS CON CONTENIDO DICCIONARIOS
+def expand_dict_columns(df):
+    """
+    Expande las columnas del dataframe de Idealista que contienen diccionarios.
+    
+    Parámetros:
+    df (pandas.DataFrame): DataFrame con datos de Idealista
+    
+    Retorna:
+    pandas.DataFrame: DataFrame con las columnas expandidas
+    """
+    # Hacer una copia del dataframe original para no modificarlo
+    df_processed = df.copy()
+    
+    def parse_dict_safely(value):
+        """Convierte strings a diccionarios de forma segura sin usar ast"""
+        if pd.isna(value):
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                # Intentar convertir usando json.loads
+                return json.loads(value)
+            except json.JSONDecodeError:
+                try:
+                    # Si falla, corregimos comillas simples a dobles
+                    value = value.replace("'", "\"")
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    # Si aún falla, retornar vacío
+                    return {}
+        return {}
+    
+    def process_column(column_name, field_mappings):
+        """
+        Procesa una columna de diccionario y extrae campos específicos.
+        
+        Parámetros:
+        column_name (str): Nombre de la columna a procesar
+        field_mappings (dict): Diccionario donde la clave es el nombre del campo 
+                               a extraer y el valor es un valor por defecto
+        """
+        if column_name not in df_processed.columns:
+            return
+            
+        # Convertir strings a diccionarios
+        df_processed[column_name] = df_processed[column_name].apply(parse_dict_safely)
+        
+        # Extraer cada campo del diccionario
+        for field, default_value in field_mappings.items():
+            new_column_name = f"{column_name}_{field}"
+            df_processed[new_column_name] = df_processed[column_name].apply(
+                lambda x: x.get(field, default_value) if isinstance(x, dict) else default_value
+            )
+    
+    # Definir los campos a extraer para cada columna
+    column_fields = {
+        'suggestedTexts': {'subtitle': None, 'title': None},
+        'detailedType': {'typology': None, 'subTypology': None},
+        'parkingSpace': {
+            'hasParkingSpace': False, 
+            'isParkingSpaceIncludedInPrice': None,
+            'parkingSpacePrice': None
+        }
+    }
+    
+    # Procesar cada columna
+    for column, fields in column_fields.items():
+        process_column(column, fields)
+    
+    # Eliminar las columnas originales
+    columns_to_drop = [col for col in column_fields.keys() if col in df_processed.columns]
+    df_processed = df_processed.drop(columns=columns_to_drop)
+    
+    return df_processed
+
+
+# Función para detectar si hay mención de terraza según los patrones
+def tiene_terraza(texto):
+    # Crear patrones de regex para buscar terrazas
+    patrones_terraza = [
+        r', terraza,', 
+        r'la terraza', 
+        r'doble terraza',
+        r'balcón/ terraza', 
+        r'balcón/terraza',
+        r'con terraza',
+        r'magnifica terraza',
+        r'amplia terraza',
+        r'gran terraza',
+        r'grandes terrazas',
+        r'terraza privada',
+        r'una terraza',
+        r'dos terrazas',
+        r'terraza de \d+ metros',
+        r'terraza de \d+ m2'
+        ]
+    # Combinar todos los patrones en una sola expresión regular
+    patron_combinado = '|'.join(patrones_terraza)
+        
+    if pd.isna(texto):
+        return 0
+    # Convertir a minúsculas para hacer la búsqueda insensible a mayúsculas
+    texto = texto.lower()
+    return 1 if re.search(patron_combinado, texto) else 0
+
+def imputar_floor(dataframe):
+    """
+    Imputa valores en la columna 'floor' basándose en palabras clave encontradas en la columna 'description'
+    para las filas donde 'floor' es NaN.
+
+    :param dataframe: DataFrame que debe contener las columnas 'floor' y 'description'.
+    :return: DataFrame con los valores imputados en 'floor'.
+    """
+    # Diccionario que mapea palabras clave a valores de 'floor'
+    floor_mapping = {
+        1: ['1º', '1ª', 'primer piso', 'piso primero', 'planta primera', 'primera planta'],
+        2: ['2º', '2ª', 'segundo piso', 'piso segundo', 'planta segunda', 'segunda planta'],
+        3: ['3º', '3ª', 'tercer piso', 'piso tercero', 'tercera planta'],
+        4: ['4º', '4ª', 'cuarto piso', 'cuarta planta'],
+        5: ['5º', '5ª', 'quinto piso', 'quinta planta'],
+        6: ['6º', '6ª','sexto piso', 'sexta planta']
+    }
+
+    # Filtrar las filas donde 'floor' es NaN
+    filtro = dataframe[dataframe['floor'].isnull()]
+
+    # Iterar sobre el filtro para verificar palabras clave
+    for index, row in filtro.iterrows():
+        descripcion = str(row['description']).lower()  # Convertir a minúsculas
+        for floor, keywords in floor_mapping.items():
+            # Verificar si alguna palabra clave está en la descripción
+            if any(keyword in descripcion for keyword in keywords):
+                dataframe.at[index, 'floor'] = floor  # Asignar el valor correspondiente
+                break  # Romper el bucle después de encontrar una coincidencia
+
+    return dataframe
 
 
